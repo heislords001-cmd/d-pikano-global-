@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>D-Pikano — Internal</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+  :root{
+    --navy-950:#0A1A2B; --paper:#F4F4F2; --ink:#1A1A1A; --red:#C0392B;
+    --steel-300:#8FA3B3; --gold:#C9A24B;
+  }
+  body{background:var(--navy-950); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;}
+  .card{background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);}
+</style>
+</head>
+<body class="min-h-screen text-white">
+
+  <!-- GATE -->
+  <div id="gate" class="min-h-screen flex items-center justify-center px-6">
+    <div class="w-full max-w-sm card rounded-sm p-8">
+      <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-2">D-PIKANO GLOBAL RESOURCES LTD</div>
+      <h1 class="text-lg font-semibold mb-6">Internal access</h1>
+      <input id="pw" type="password" placeholder="Password" class="w-full bg-transparent border border-white/15 rounded-sm px-3 py-2 text-sm mb-3 outline-none focus:border-[var(--red)]">
+      <button id="unlockBtn" class="w-full bg-[var(--red)] hover:opacity-90 rounded-sm py-2 text-sm font-medium">Unlock</button>
+      <p id="err" class="hidden text-[var(--red)] text-[12px] mt-3">Incorrect password.</p>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dash" class="hidden max-w-6xl mx-auto px-6 md:px-10 py-14">
+    <div class="flex items-center justify-between mb-10">
+      <div>
+        <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-1">D-PIKANO GLOBAL RESOURCES LTD</div>
+        <h1 class="text-2xl font-semibold">Internal dashboard</h1>
+      </div>
+      <button id="lockBtn" class="text-[12px] text-[var(--steel-300)] hover:text-white border border-white/15 rounded-sm px-3 py-1.5">Lock</button>
+    </div>
+
+    <!-- QUICK LINKS -->
+    <div class="mb-12">
+      <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-3">QUICK LINKS</div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <a href="https://formspree.io/forms" target="_blank" class="card rounded-sm p-4 hover:border-[var(--red)]/50 block">
+          <div class="text-sm font-medium mb-1">Formspree inbox</div>
+          <div class="text-[12px] text-[var(--steel-300)]">Quote requests</div>
+        </a>
+        <a href="https://vercel.com/dashboard" target="_blank" class="card rounded-sm p-4 hover:border-[var(--red)]/50 block">
+          <div class="text-sm font-medium mb-1">Vercel</div>
+          <div class="text-[12px] text-[var(--steel-300)]">Deploys &amp; domains</div>
+        </a>
+        <a href="https://app.netlify.com" target="_blank" class="card rounded-sm p-4 hover:border-[var(--red)]/50 block">
+          <div class="text-sm font-medium mb-1">Netlify</div>
+          <div class="text-[12px] text-[var(--steel-300)]">Legacy deploy</div>
+        </a>
+        <a href="https://github.com/heislords001-cmd" target="_blank" class="card rounded-sm p-4 hover:border-[var(--red)]/50 block">
+          <div class="text-sm font-medium mb-1">GitHub</div>
+          <div class="text-[12px] text-[var(--steel-300)]">Source repo</div>
+        </a>
+      </div>
+    </div>
+
+    <!-- PROJECT OVERVIEW -->
+    <div class="mb-12">
+      <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-3">PROJECT OVERVIEW</div>
+      <div class="card rounded-sm overflow-hidden">
+        <table class="w-full text-[13px]">
+          <thead>
+            <tr class="text-left text-[var(--steel-300)] border-b border-white/10">
+              <th class="px-4 py-3 font-normal">Project</th>
+              <th class="px-4 py-3 font-normal">Location</th>
+              <th class="px-4 py-3 font-normal">Photos</th>
+              <th class="px-4 py-3 font-normal">Page</th>
+            </tr>
+          </thead>
+          <tbody id="projTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- NOTES -->
+    <div>
+      <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-3">NOTES</div>
+      <div class="card rounded-sm p-4">
+        <p class="text-[13px] text-[var(--steel-300)] leading-relaxed">
+          This page is unlisted — it isn't linked from the site nav, sitemap, or robots.txt, and carries a noindex tag.
+          Since the site has no backend, this lock is a client-side password check only: it keeps casual visitors out,
+          but isn't true server-side security. Don't use it to store anything genuinely sensitive (passwords, financial data, ID numbers).
+        </p>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // SHA-256 hash of the current password. Change PASSWORD_HASH to update it —
+  // generate a new one with: crypto.subtle.digest('SHA-256', ...) or any SHA-256 tool.
+  const PASSWORD_HASH = "c5466cdb2b36fc73b5ad422703568e11d49c4d5a58a6e037205d2f362690ff07";
+
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const gate = document.getElementById('gate');
+  const dash = document.getElementById('dash');
+  const pwInput = document.getElementById('pw');
+  const err = document.getElementById('err');
+
+  async function tryUnlock() {
+    const hash = await sha256(pwInput.value);
+    if (hash === PASSWORD_HASH) {
+      sessionStorage.setItem('dpikano_ops', '1');
+      gate.classList.add('hidden');
+      dash.classList.remove('hidden');
+      err.classList.add('hidden');
+    } else {
+      err.classList.remove('hidden');
+    }
+  }
+
+  document.getElementById('unlockBtn').addEventListener('click', tryUnlock);
+  pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+  document.getElementById('lockBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('dpikano_ops');
+    dash.classList.add('hidden');
+    gate.classList.remove('hidden');
+    pwInput.value = '';
+  });
+
+  // Stay unlocked for the current browser tab session only
+  if (sessionStorage.getItem('dpikano_ops') === '1') {
+    gate.classList.add('hidden');
+    dash.classList.remove('hidden');
+  }
+
+  // Project data (static — mirrors the public projects folder)
+  const projects = [
+    { name: "Solution Fun City, Awka", loc: "Awka, Anambra State", folder: "solution-fun-city", page: "solution-fun-city.html" },
+    { name: "3rd Chronicles Shopping Plaza", loc: "Enugu, Enugu State", folder: "3rd-chronicles-plaza", page: "3rd-chronicles-plaza.html" },
+    { name: "Asaba Hotel Project", loc: "Asaba, Delta State", folder: "asaba-hotel", page: "asaba-hotel.html" },
+    { name: "Checkers Supermarket, Ikorodu", loc: "Ikorodu, Lagos State", folder: "checkers-ikorodu", page: "checkers-ikorodu.html" },
+    { name: "Food Processing Plant, Isolo", loc: "Isolo, Lagos State", folder: "food-processing-isolo", page: "food-processing-isolo.html" },
+    { name: "Hypo Brine Plant", loc: "—", folder: "hypo-brine", page: "hypo-brine.html" },
+    { name: "Springhurst Laboratory", loc: "Enugu, Enugu State", folder: "springhurst-lab", page: "springhurst-lab.html" },
+    { name: "Sunlight Sagamu", loc: "Sagamu, Ogun State", folder: "sunlight-sagamu", page: "sunlight-sagamu.html" },
+  ];
+
+  const tbody = document.getElementById('projTable');
+  projects.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-white/5 last:border-0';
+    tr.innerHTML = `
+      <td class="px-4 py-3">${p.name}</td>
+      <td class="px-4 py-3 text-[var(--steel-300)]">${p.loc}</td>
+      <td class="px-4 py-3 text-[var(--steel-300)]">—</td>
+      <td class="px-4 py-3"><a href="../projects/${p.page}" target="_blank" class="text-[var(--red)] hover:underline">view</a></td>
+    `;
+    tbody.appendChild(tr);
+  });
+</script>
+</body>
+</html>

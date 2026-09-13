@@ -1,0 +1,256 @@
+:root{
+  --navy-950:#0A1A2B;
+  --navy-900:#0F2942;
+  --navy-800:#163C5C;
+  --navy-700:#1F4E72;
+  --steel-300:#9FB3C4;
+  --steel-100:#E8EEF3;
+  --paper:#F5F6F4;
+  --red:#B4272C;
+  --red-dim:#8E1F23;
+  --gold:#D9A441;
+  --gold-dim:#B5842F;
+  --ink:#101820;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; overflow-x:hidden;}
+body{overflow-x:hidden;}
+img{max-width:100%; height:auto; display:block;}
+.grid > *, .flex > *{min-width:0;}
+body{
+  font-family:'IBM Plex Sans', sans-serif;
+  background:var(--navy-950);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+.font-display{font-family:'Space Grotesk', sans-serif;}
+.font-mono{font-family:'IBM Plex Mono', monospace;}
+
+.tracking-tightest{letter-spacing:-0.03em;}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important;}
+}
+
+/* Blueprint grid texture for dark sections */
+.blueprint-bg{
+  position:relative;
+  background-image:
+    linear-gradient(rgba(159,179,196,.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(159,179,196,.07) 1px, transparent 1px);
+  background-size:44px 44px;
+  background-position:center top;
+}
+.blueprint-bg::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:radial-gradient(ellipse 60% 50% at 15% 0%, rgba(180,39,44,.16), transparent 60%),
+             radial-gradient(ellipse 50% 40% at 100% 100%, rgba(217,164,65,.10), transparent 60%);
+  pointer-events:none;
+}
+
+/* Diagonal brand stripe accent, echoes the original DPG cover band */
+.brand-stripe{
+  position:absolute;
+  z-index:0;
+  pointer-events:none;
+}
+.brand-stripe .s1, .brand-stripe .s2{
+  position:absolute;
+  transform:rotate(-32deg);
+}
+.brand-stripe .s1{
+  width:340px; height:26px;
+  background:var(--red);
+  opacity:.9;
+}
+.brand-stripe .s2{
+  width:340px; height:26px;
+  background:var(--gold);
+  opacity:.9;
+}
+
+
+.reveal{
+  opacity:1;
+  transform:translateY(0);
+}
+.reveal[data-anim]{
+  animation:none;
+}
+/* Hero image float */
+@media (prefers-reduced-motion: no-preference){
+  .hero-float{
+    animation:heroFloat 6.5s ease-in-out infinite;
+  }
+  @keyframes heroFloat{
+    0%   { transform:translateY(0px); }
+    50%  { transform:translateY(-16px); }
+    100% { transform:translateY(0px); }
+  }
+  .hero-badge-float{
+    animation:heroBadge 6.5s ease-in-out infinite;
+  }
+  @keyframes heroBadge{
+    0%   { transform:translateY(0px); }
+    50%  { transform:translateY(-16px); }
+    100% { transform:translateY(0px); }
+  }
+}
+
+/* Mobile nav */
+.mobile-menu{
+  max-height:0;
+  overflow:hidden;
+  transition:max-height .35s cubic-bezier(.2,.7,.2,1);
+}
+.mobile-menu.is-open{
+  max-height:400px;
+}
+.hamburger{
+  width:22px; height:16px; position:relative;
+}
+.hamburger span{
+  position:absolute; left:0; width:100%; height:2px; background:#fff;
+  transition:transform .3s ease, opacity .3s ease, top .3s ease;
+}
+.hamburger span:nth-child(1){top:0;}
+.hamburger span:nth-child(2){top:7px;}
+.hamburger span:nth-child(3){top:14px;}
+.hamburger.is-open span:nth-child(1){top:7px; transform:rotate(45deg);}
+.hamburger.is-open span:nth-child(2){opacity:0;}
+.hamburger.is-open span:nth-child(3){top:7px; transform:rotate(-45deg);}
+
+.js-reveal{
+  opacity:1;
+  transform:translateY(0);
+}
+
+.grain-line{
+  position:relative;
+}
+.grain-line::after{
+  content:"";
+  position:absolute;
+  left:0; right:0; bottom:0;
+  height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+}
+
+/* Bespoke CTAs — each button its own identity */
+.btn-primary{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:.6rem;
+  padding:.9rem 1.6rem;
+  background:var(--red);
+  color:#fff;
+  font-weight:600;
+  font-size:.95rem;
+  border-radius:2px;
+  overflow:hidden;
+  transition:transform .25s ease, background .25s ease;
+}
+.btn-primary::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:var(--red-dim);
+  transform:translateX(-101%);
+  transition:transform .35s cubic-bezier(.2,.7,.2,1);
+  z-index:0;
+}
+.btn-primary span{position:relative; z-index:1; display:flex; align-items:center; gap:.5rem;}
+.btn-primary:hover::before{transform:translateX(0);}
+.btn-primary:active{transform:scale(0.98);}
+
+.btn-ghost{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  padding:.85rem 0;
+  color:var(--steel-100);
+  font-weight:600;
+  font-size:.95rem;
+  border-bottom:1px solid rgba(255,255,255,.35);
+}
+.btn-ghost svg{transition:transform .3s cubic-bezier(.2,.7,.2,1);}
+.btn-ghost:hover svg{transform:translateX(4px);}
+.btn-ghost:active{transform:scale(0.98);}
+
+.btn-outline-dark{
+  display:inline-flex;
+  align-items:center;
+  gap:.6rem;
+  padding:.85rem 1.5rem;
+  border:1.5px solid var(--navy-900);
+  color:var(--navy-900);
+  font-weight:600;
+  font-size:.95rem;
+  border-radius:2px;
+  transition:background .25s ease, color .25s ease, transform .2s ease;
+}
+.btn-outline-dark:hover{background:var(--navy-900); color:#fff;}
+.btn-outline-dark:active{transform:scale(0.98);}
+
+.chip-tag{
+  display:inline-flex;
+  align-items:center;
+  font-family:'IBM Plex Mono', monospace;
+  font-size:.68rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--red);
+}
+
+.svc-card{
+  border-top:1px solid rgba(15,41,66,.14);
+  transition:border-color .3s ease;
+}
+.svc-card:hover{border-top-color:var(--red);}
+.svc-card:hover .svc-num{color:var(--red);}
+
+.svc-num{
+  font-family:'IBM Plex Mono', monospace;
+  color:rgba(15,41,66,.35);
+  transition:color .3s ease;
+}
+
+.proj-card{
+  position:relative;
+  overflow:hidden;
+}
+.proj-card img{
+  transition:transform .6s cubic-bezier(.2,.7,.2,1);
+}
+.proj-card:hover img{transform:scale(1.05);}
+.proj-overlay{
+  background:linear-gradient(180deg, transparent 40%, rgba(10,26,43,.92) 100%);
+}
+
+.stat-num{
+  font-variant-numeric:tabular-nums;
+}
+
+.nav-link{
+  position:relative;
+  padding-bottom:2px;
+}
+.nav-link::after{
+  content:"";
+  position:absolute;
+  left:0; bottom:0;
+  width:0; height:1px;
+  background:var(--red);
+  transition:width .3s ease;
+}
+.nav-link:hover::after{width:100%;}
+
+.divide-line > * + *{border-top:1px solid rgba(15,41,66,.12);}
+
+::selection{background:var(--red); color:#fff;}
