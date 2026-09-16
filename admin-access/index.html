@@ -109,6 +109,20 @@
 
 <div class="toast" id="toastHost"></div>
 
+<!-- ================= PUBLISH CONFIRM MODAL ================= -->
+<div id="publishModal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-6">
+  <div class="w-full max-w-sm card rounded-sm p-8" style="background:#0F2438;">
+    <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-2">CONFIRM PUBLISH</div>
+    <h2 class="text-base font-semibold mb-4">Re-enter password to publish</h2>
+    <input id="publishPw" type="password" placeholder="Password" class="mb-3">
+    <div class="flex gap-2">
+      <button id="publishConfirmBtn" class="btn flex-1">Confirm &amp; Publish</button>
+      <button id="publishCancelBtn" class="btn-ghost flex-1">Cancel</button>
+    </div>
+    <p id="publishPwErr" class="hidden text-[var(--red)] text-[12px] mt-3">Incorrect password.</p>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -747,7 +761,33 @@
   }
 
   // ---------- PUBLISH ----------
-  document.getElementById('publishBtn').addEventListener('click', publish);
+  document.getElementById('publishBtn').addEventListener('click', openPublishModal);
+
+  function openPublishModal() {
+    if (!currentPage || !previewDoc) return;
+    document.getElementById('publishPw').value = '';
+    document.getElementById('publishPwErr').classList.add('hidden');
+    document.getElementById('publishModal').classList.remove('hidden');
+    document.getElementById('publishPw').focus();
+  }
+  function closePublishModal() {
+    document.getElementById('publishModal').classList.add('hidden');
+  }
+  document.getElementById('publishCancelBtn').addEventListener('click', closePublishModal);
+  document.getElementById('publishPw').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') document.getElementById('publishConfirmBtn').click();
+    if (e.key === 'Escape') closePublishModal();
+  });
+  document.getElementById('publishConfirmBtn').addEventListener('click', async function(){
+    const val = document.getElementById('publishPw').value;
+    const hash = await sha256(val);
+    if (hash !== PASSWORD_HASH) {
+      document.getElementById('publishPwErr').classList.remove('hidden');
+      return;
+    }
+    closePublishModal();
+    publish();
+  });
 
   function dirOfPage(path) { return dirOf(path); }
 
