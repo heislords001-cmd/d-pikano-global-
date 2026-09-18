@@ -107,6 +107,30 @@
   </div>
 </div>
 
+<!-- ================= NEW PROJECT MODAL ================= -->
+<div id="newProjectModal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-6 py-10 overflow-y-auto">
+  <div class="w-full max-w-lg card rounded-sm p-8" style="background:#0F2438;">
+    <div class="text-[11px] tracking-wide text-[var(--steel-300)] mb-2">NEW PROJECT</div>
+    <h2 class="text-base font-semibold mb-4">Create a new project page</h2>
+    <div class="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+      <div class="field"><label class="field-label">Project title</label><input id="npTitle" type="text" placeholder="e.g. XYZ Warehouse, Kano"></div>
+      <div class="field"><label class="field-label">URL slug (auto-filled, editable)</label><input id="npSlug" type="text" placeholder="xyz-warehouse-kano"></div>
+      <div class="field"><label class="field-label">Category &middot; location tag (shown on card &amp; hero)</label><input id="npCategoryTag" type="text" placeholder="e.g. Industrial &middot; Kano State"></div>
+      <div class="field"><label class="field-label">Location</label><input id="npLocation" type="text" placeholder="Kano, Kano State"></div>
+      <div class="field"><label class="field-label">Client</label><input id="npClient" type="text" placeholder="Client name"></div>
+      <div class="field"><label class="field-label">Main contractor</label><input id="npContractor" type="text" value="D-Pikano Global Resources Ltd" placeholder="D-Pikano Global Resources Ltd"></div>
+      <div class="field"><label class="field-label">Summary (used on hero &amp; homepage card)</label><textarea id="npBlurb" rows="3" placeholder="Short description of the work done"></textarea></div>
+      <div class="field"><label class="field-label">First scope-of-work line</label><input id="npScope1" type="text" placeholder="e.g. Fire hydrant system installation"></div>
+      <div class="field"><label class="field-label">Hero / first gallery photo</label><input id="npImage" type="file" accept="image/*" class="text-[11px] text-[var(--steel-300)]"></div>
+    </div>
+    <div class="flex gap-2 mt-5">
+      <button id="npCreateBtn" class="btn flex-1">Create project</button>
+      <button id="npCancelBtn" class="btn-ghost flex-1">Cancel</button>
+    </div>
+    <p id="npErr" class="hidden text-[var(--red)] text-[12px] mt-3"></p>
+  </div>
+</div>
+
 <div class="toast" id="toastHost"></div>
 
 <!-- ================= PUBLISH CONFIRM MODAL ================= -->
@@ -146,6 +170,9 @@
     { path: "projects/sunlight-sagamu.html", label: "Sunlight, Sagamu", type: "project", slug: "sunlight-sagamu" },
     { path: "projects/hypo-brine.html", label: "Hypo Brine Plant", type: "project", slug: "hypo-brine" },
     { path: "projects/food-processing-isolo.html", label: "Food Processing, Isolo", type: "project", slug: "food-processing-isolo" },
+    { path: "contact-developer.html", label: "Contact Developer", type: "legal" },
+    { path: "terms-of-service.html", label: "Terms of Service", type: "legal" },
+    { path: "cookie-policy.html", label: "Cookie Policy", type: "legal" },
   ];
 
   // ---------- UTIL ----------
@@ -282,6 +309,7 @@
       tokenGate.classList.add('hidden');
       dash.classList.remove('hidden');
       document.getElementById('repoStatus').textContent = data.full_name + " · " + (data.private ? "private" : "public");
+      await loadDynamicPages();
       buildPageList();
     } catch (e) {
       document.getElementById('tokenErr').classList.remove('hidden');
@@ -326,11 +354,40 @@
   let pendingUploads = [];  // { file, node, attr, finalPath, isNewGalleryLink }
   let pendingDeletes = [];  // { path }
   let dirty = false;
+  let DYNAMIC_PAGES = [];   // project pages created via the dashboard, persisted in admin-access/pages.json
+
+  async function loadDynamicPages() {
+    try {
+      const result = await ghGetFile('admin-access/pages.json', GH_TOKEN);
+      DYNAMIC_PAGES = JSON.parse(result.content);
+    } catch (e) {
+      DYNAMIC_PAGES = []; // manifest doesn't exist yet — fine, first project will create it
+    }
+  }
+
+  async function saveDynamicPages(newEntry) {
+    let sha = null;
+    try {
+      const existing = await ghGetFile('admin-access/pages.json', GH_TOKEN);
+      sha = existing.sha;
+    } catch (e) { /* file doesn't exist yet */ }
+    DYNAMIC_PAGES.push(newEntry);
+    await ghPutText('admin-access/pages.json', GH_TOKEN, JSON.stringify(DYNAMIC_PAGES, null, 2), sha, "Register new project page via admin dashboard");
+  }
 
   function buildPageList() {
     const host = document.getElementById('pageList');
     host.innerHTML = '';
-    PAGES.forEach(function(p){
+    const settingsLink = el('div', 'side-link mb-1', 'Site-wide Settings');
+    settingsLink.addEventListener('click', function(){ selectGlobalSettings(settingsLink); });
+    host.appendChild(settingsLink);
+    const divider = el('div', 'border-t border-white/10 my-3');
+    host.appendChild(divider);
+    const newBtn = el('button', 'w-full text-left mb-3 text-[11px] text-[var(--red)] hover:underline', '+ New project');
+    newBtn.type = 'button';
+    newBtn.addEventListener('click', openNewProjectModal);
+    host.appendChild(newBtn);
+    PAGES.concat(DYNAMIC_PAGES).forEach(function(p){
       const a = el('div', 'side-link', p.label);
       a.addEventListener('click', function(){ selectPage(p, a); });
       host.appendChild(a);
@@ -364,6 +421,103 @@
     }
   }
 
+  // ---------- SITE-WIDE SETTINGS (updates every page's footer at once) ----------
+  async function selectGlobalSettings(linkEl) {
+    if (dirty && !confirm("You have unpublished changes on the current page. Switch anyway and lose them?")) return;
+    document.querySelectorAll('.side-link').forEach(function(x){ x.classList.remove('active'); });
+    if (linkEl) linkEl.classList.add('active');
+    dirty = false;
+    currentPage = null;
+    previewDoc = null;
+    pendingUploads = [];
+    pendingDeletes = [];
+    document.getElementById('publishBtn').disabled = true;
+    document.getElementById('formEmpty').classList.add('hidden');
+    document.getElementById('formContent').classList.remove('hidden');
+    document.getElementById('formContent').innerHTML = '';
+
+    const frame = document.getElementById('previewFrame');
+    frame.srcdoc = '<body style="font-family:ui-monospace,monospace;color:#8FA3B3;background:#050d16;' +
+      'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:13px;text-align:center;padding:0 40px;">' +
+      'No live preview here — Save updates every page\u2019s footer directly.</body>';
+
+    const box = section("Social links (shown in every page's footer)");
+    box.appendChild(el('div', 'text-[12px] text-[var(--steel-300)] mb-4 leading-relaxed',
+      'Set these once — Save pushes the LinkedIn and Facebook links to every page on the site in one go, instead of editing each page separately.'));
+
+    let currentLinkedin = '', currentFacebook = '';
+    try {
+      const home = await ghGetFile('index.html', GH_TOKEN);
+      const liMatch = home.content.match(/href="([^"]*)"\s+data-social="linkedin"/);
+      const fbMatch = home.content.match(/href="([^"]*)"\s+data-social="facebook"/);
+      currentLinkedin = liMatch ? liMatch[1] : '';
+      currentFacebook = fbMatch ? fbMatch[1] : '';
+    } catch (e) { /* leave blank if index.html can't be read yet */ }
+
+    const w1 = el('div', 'field');
+    w1.appendChild(el('label', 'field-label', 'LinkedIn URL'));
+    const in1 = document.createElement('input'); in1.type = 'text'; in1.id = 'gsLinkedin';
+    in1.value = (currentLinkedin === '#' ? '' : currentLinkedin);
+    in1.placeholder = 'https://linkedin.com/company/...';
+    w1.appendChild(in1);
+    box.appendChild(w1);
+
+    const w2 = el('div', 'field');
+    w2.appendChild(el('label', 'field-label', 'Facebook URL'));
+    const in2 = document.createElement('input'); in2.type = 'text'; in2.id = 'gsFacebook';
+    in2.value = (currentFacebook === '#' ? '' : currentFacebook);
+    in2.placeholder = 'https://facebook.com/...';
+    w2.appendChild(in2);
+    box.appendChild(w2);
+
+    const saveBtn = el('button', 'btn mt-2', 'Save to every page');
+    saveBtn.id = 'gsSaveBtn';
+    saveBtn.type = 'button';
+    saveBtn.addEventListener('click', function(){ showPublishConfirm(doPublishGlobalSettings); });
+    box.appendChild(saveBtn);
+
+    const statusEl = el('div', 'text-[12px] mt-3', '');
+    statusEl.id = 'gsStatus';
+    box.appendChild(statusEl);
+  }
+
+  async function doPublishGlobalSettings() {
+    const linkedinUrl = (document.getElementById('gsLinkedin').value.trim() || '#').replace(/"/g, '&quot;');
+    const facebookUrl = (document.getElementById('gsFacebook').value.trim() || '#').replace(/"/g, '&quot;');
+    const btn = document.getElementById('gsSaveBtn');
+    const statusEl = document.getElementById('gsStatus');
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>';
+
+    const allPaths = PAGES.concat(DYNAMIC_PAGES).map(function(p){ return p.path; });
+    let successCount = 0;
+    const failures = [];
+
+    for (const path of allPaths) {
+      try {
+        const fileData = await ghGetFile(path, GH_TOKEN);
+        let content = fileData.content;
+        content = content.replace(/href="[^"]*"(\s+data-social="linkedin")/, 'href="' + linkedinUrl + '"$1');
+        content = content.replace(/href="[^"]*"(\s+data-social="facebook")/, 'href="' + facebookUrl + '"$1');
+        await ghPutText(path, GH_TOKEN, content, fileData.sha, "Update social links via Site-wide Settings");
+        successCount++;
+      } catch (e) {
+        failures.push(path);
+      }
+    }
+
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    if (failures.length === 0) {
+      toast('Updated LinkedIn/Facebook links on all ' + successCount + ' pages.', 'ok');
+      if (statusEl) { statusEl.textContent = 'Done — updated ' + successCount + ' pages.'; statusEl.className = 'text-[12px] mt-3 text-[#2ecc71]'; }
+    } else {
+      toast('Updated ' + successCount + ' pages, but failed on ' + failures.length + '.', 'err');
+      if (statusEl) { statusEl.textContent = 'Failed on: ' + failures.join(', '); statusEl.className = 'text-[12px] mt-3 text-[var(--red)]'; }
+    }
+  }
+
   function dirOf(path) {
     const parts = path.split('/');
     parts.pop();
@@ -389,6 +543,14 @@
     const box = document.getElementById('formContent');
     box.appendChild(el('div', 'section-head', title));
     return box;
+  }
+
+  function addButton(container, label, onClick) {
+    const btn = el('button', 'text-[11px] text-[var(--red)] hover:underline mb-4', '+ ' + label);
+    btn.type = 'button';
+    btn.addEventListener('click', onClick);
+    container.appendChild(btn);
+    return btn;
   }
 
   function textField(container, labelText, node, opts) {
@@ -465,6 +627,7 @@
     if (page.type === 'home') renderHomeForm(doc);
     else if (page.type === 'project') renderProjectForm(doc, page);
     else if (page.type === 'quote') renderQuoteForm(doc);
+    else if (page.type === 'legal') renderLegalForm(doc);
   }
 
   // ---------- HOME FORM ----------
@@ -479,38 +642,109 @@
     const heroImg = doc.querySelector('#top img');
     if (heroImg) { heroImg.setAttribute('data-repo-path', repoPathFromRelative(heroImg.getAttribute('src'), '')); imageField(box, 'Hero photo', heroImg); }
 
+    // ---- Stats band ----
     box = section('Stats band');
-    doc.querySelectorAll('.stat-num').forEach(function(numNode, i){
-      const labelNode = numNode.nextElementSibling;
-      const row = el('div', 'grid grid-cols-2 gap-2 mb-1');
-      const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Number ' + (i+1)));
-      const in1 = document.createElement('input'); in1.type='text'; in1.value = numNode.textContent.trim();
-      in1.addEventListener('input', function(){ numNode.textContent = in1.value; markDirty(); });
-      w1.appendChild(in1);
-      const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Label ' + (i+1)));
-      const in2 = document.createElement('input'); in2.type='text'; in2.value = labelNode.textContent.trim();
-      in2.addEventListener('input', function(){ labelNode.textContent = in2.value; markDirty(); });
-      w2.appendChild(in2);
-      row.appendChild(w1); row.appendChild(w2);
-      box.appendChild(row);
+    const statsWrap = el('div'); box.appendChild(statsWrap);
+    const statsContainer = doc.querySelector('.grid.grid-cols-2.md\\:grid-cols-4');
+    function renderStats() {
+      statsWrap.innerHTML = '';
+      doc.querySelectorAll('.stat-num').forEach(function(numNode, i){
+        const labelNode = numNode.nextElementSibling;
+        const row = el('div', 'grid grid-cols-2 gap-2 mb-1');
+        const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Number ' + (i+1)));
+        const in1 = document.createElement('input'); in1.type='text'; in1.value = numNode.textContent.trim();
+        in1.addEventListener('input', function(){ numNode.textContent = in1.value; markDirty(); });
+        w1.appendChild(in1);
+        const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Label ' + (i+1)));
+        const in2 = document.createElement('input'); in2.type='text'; in2.value = labelNode.textContent.trim();
+        in2.addEventListener('input', function(){ labelNode.textContent = in2.value; markDirty(); });
+        w2.appendChild(in2);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline mb-2', 'Remove this stat');
+        del.type = 'button';
+        del.addEventListener('click', function(){ numNode.parentElement.remove(); renderStats(); markDirty(); });
+        row.appendChild(w1); row.appendChild(w2);
+        statsWrap.appendChild(row); statsWrap.appendChild(del);
+      });
+    }
+    renderStats();
+    addButton(box, 'Add stat', function(){
+      const template = doc.querySelector('.grid.grid-cols-2.md\\:grid-cols-4 > div');
+      const clone = template.cloneNode(true);
+      clone.querySelector('.stat-num').textContent = 'New';
+      clone.querySelector('.stat-num').nextElementSibling.textContent = 'Label here';
+      statsContainer.appendChild(clone);
+      renderStats(); markDirty();
     });
 
-    box = section('Services (edit text only — add/remove a service by asking directly)');
-    doc.querySelectorAll('#services .svc-card').forEach(function(card, i){
-      const h3 = card.querySelector('h3'); const p = card.querySelector('p');
-      const grp = el('div', 'mb-4 pb-4 border-b border-white/5');
-      grp.appendChild(el('div', 'text-[11px] text-[var(--gold)] mb-2', 'Service ' + (i+1)));
-      textField(grp, 'Title', h3);
-      textField(grp, 'Description', p, { multiline: true, rows: 3 });
-      box.appendChild(grp);
+    // ---- Services ----
+    box = section('Services');
+    const servicesWrap = el('div'); box.appendChild(servicesWrap);
+    const servicesContainer = doc.querySelector('#services .divide-y, #services');
+    function renumberServices() {
+      doc.querySelectorAll('#services .svc-card').forEach(function(card, i){
+        const num = card.querySelector('.svc-num');
+        if (num) num.textContent = String(i + 1).padStart(2, '0');
+      });
+    }
+    function renderServices() {
+      servicesWrap.innerHTML = '';
+      doc.querySelectorAll('#services .svc-card').forEach(function(card, i){
+        const h3 = card.querySelector('h3'); const p = card.querySelector('p');
+        const grp = el('div', 'mb-4 pb-4 border-b border-white/5');
+        grp.appendChild(el('div', 'text-[11px] text-[var(--gold)] mb-2', 'Service ' + (i+1)));
+        textField(grp, 'Title', h3);
+        textField(grp, 'Description', p, { multiline: true, rows: 3 });
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline', 'Remove this service');
+        del.type = 'button';
+        del.addEventListener('click', function(){ card.remove(); renumberServices(); renderServices(); markDirty(); });
+        grp.appendChild(del);
+        servicesWrap.appendChild(grp);
+      });
+    }
+    renderServices();
+    addButton(box, 'Add service', function(){
+      const cards = doc.querySelectorAll('#services .svc-card');
+      const last = cards[cards.length - 1];
+      const clone = last.cloneNode(true);
+      clone.querySelector('h3').textContent = 'New service';
+      clone.querySelector('p').textContent = 'Describe this service.';
+      last.parentElement.appendChild(clone);
+      renumberServices(); renderServices(); markDirty();
     });
 
+    // ---- Why D-Pikano ----
     box = section('Why D-Pikano');
     const whyImg = doc.querySelector('#why img');
     if (whyImg) { whyImg.setAttribute('data-repo-path', repoPathFromRelative(whyImg.getAttribute('src'), '')); imageField(box, 'Photo', whyImg); }
     const whyH2 = doc.querySelector('#why h2');
     if (whyH2) textField(box, 'Heading', whyH2, { multiline: true, rows: 2 });
-    doc.querySelectorAll('#why li p').forEach(function(p, i){ textField(box, 'Bullet ' + (i+1), p, { multiline: true, rows: 2 }); });
+    const whyWrap = el('div'); box.appendChild(whyWrap);
+    const whyList = doc.querySelector('#why ul, #why ol');
+    function renderWhyBullets() {
+      whyWrap.innerHTML = '';
+      doc.querySelectorAll('#why li').forEach(function(li, i){
+        const p = li.querySelector('p');
+        if (!p) return;
+        const row = el('div', 'field');
+        row.appendChild(el('label', 'field-label', 'Bullet ' + (i+1)));
+        const input = document.createElement('textarea'); input.rows = 2; input.value = p.textContent.trim();
+        input.addEventListener('input', function(){ p.textContent = input.value; markDirty(); });
+        row.appendChild(input);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline mb-2', 'Remove this bullet');
+        del.type = 'button';
+        del.addEventListener('click', function(){ li.remove(); renderWhyBullets(); markDirty(); });
+        row.appendChild(del);
+        whyWrap.appendChild(row);
+      });
+    }
+    renderWhyBullets();
+    if (whyList) addButton(box, 'Add bullet', function(){
+      const items = doc.querySelectorAll('#why li');
+      const clone = items[items.length - 1].cloneNode(true);
+      clone.querySelector('p').textContent = 'New point here.';
+      whyList.appendChild(clone);
+      renderWhyBullets(); markDirty();
+    });
 
     box = section('Selected projects — intro text');
     const projH2 = doc.querySelector('#projects h2');
@@ -518,7 +752,8 @@
     const projP = doc.querySelector('#projects h2 + p, #projects .self-end');
     if (projP) textField(box, 'Subtext', projP, { multiline: true, rows: 2 });
 
-    box = section('Project cards (image, tag, title, blurb — order & links fixed)');
+    // ---- Project cards ----
+    box = section('Project cards');
     doc.querySelectorAll('#projects .proj-card').forEach(function(card, i){
       const img = card.querySelector('img');
       const tag = card.querySelector('.chip-tag');
@@ -532,11 +767,40 @@
       if (p) textField(grp, 'Blurb', p, { multiline: true, rows: 3 });
       box.appendChild(grp);
     });
+    box.appendChild(el('div', 'text-[11px] text-[var(--steel-300)] mb-3 leading-relaxed', 'A brand new project needs its own page, not just a card — use "+ Add new project" below.'));
+    addButton(box, 'Add new project', openNewProjectModal);
 
+    // ---- Also delivered for ----
     box = section('Also delivered for (client name chips)');
-    const chipSpans = Array.from(doc.querySelectorAll('#projects .flex-wrap span')).slice(1);
-    chipSpans.forEach(function(s, i){ textField(box, 'Client ' + (i+1), s); });
+    const chipsWrap = el('div'); box.appendChild(chipsWrap);
+    const chipsContainer = doc.querySelector('#projects .flex-wrap');
+    function renderChips() {
+      chipsWrap.innerHTML = '';
+      const spans = Array.from(doc.querySelectorAll('#projects .flex-wrap span')).slice(1);
+      spans.forEach(function(s, i){
+        const row = el('div', 'field flex gap-2 items-end');
+        const inner = el('div', 'flex-1');
+        inner.appendChild(el('label', 'field-label', 'Client ' + (i+1)));
+        const input = document.createElement('input'); input.type = 'text'; input.value = s.textContent.trim();
+        input.addEventListener('input', function(){ s.textContent = input.value; markDirty(); });
+        inner.appendChild(input);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline pb-2', 'Remove');
+        del.type = 'button';
+        del.addEventListener('click', function(){ s.remove(); renderChips(); markDirty(); });
+        row.appendChild(inner); row.appendChild(del);
+        chipsWrap.appendChild(row);
+      });
+    }
+    renderChips();
+    if (chipsContainer) addButton(box, 'Add client chip', function(){
+      const spans = doc.querySelectorAll('#projects .flex-wrap span');
+      const clone = spans[spans.length - 1].cloneNode(true);
+      clone.textContent = 'New Client';
+      chipsContainer.appendChild(clone);
+      renderChips(); markDirty();
+    });
 
+    // ---- Leadership ----
     box = section('Leadership');
     const ceoImg = doc.querySelector('#team img');
     if (ceoImg) { ceoImg.setAttribute('data-repo-path', repoPathFromRelative(ceoImg.getAttribute('src'), '')); imageField(box, 'CEO photo', ceoImg); }
@@ -548,38 +812,76 @@
     const teamIntro = divideLine ? divideLine.previousElementSibling : null;
     if (teamIntro && teamIntro.tagName === 'P') textField(box, 'Intro paragraph', teamIntro, { multiline: true, rows: 3 });
 
+    // ---- Team members ----
     box = section('Team members');
-    doc.querySelectorAll('#team .divide-line.font-mono > div').forEach(function(row, i){
-      const spans = row.querySelectorAll('span');
-      const grp = el('div', 'grid grid-cols-2 gap-2 mb-1');
-      const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Name ' + (i+1)));
-      const in1 = document.createElement('input'); in1.type='text'; in1.value = spans[0].textContent.trim();
-      in1.addEventListener('input', function(){ spans[0].textContent = in1.value; markDirty(); });
-      w1.appendChild(in1);
-      const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Title ' + (i+1)));
-      const in2 = document.createElement('input'); in2.type='text'; in2.value = spans[1].textContent.trim();
-      in2.addEventListener('input', function(){ spans[1].textContent = in2.value; markDirty(); });
-      w2.appendChild(in2);
-      grp.appendChild(w1); grp.appendChild(w2);
-      box.appendChild(grp);
+    const teamWrap = el('div'); box.appendChild(teamWrap);
+    const teamContainer = doc.querySelector('#team .divide-line.font-mono');
+    function renderTeamMembers() {
+      teamWrap.innerHTML = '';
+      doc.querySelectorAll('#team .divide-line.font-mono > div').forEach(function(row, i){
+        const spans = row.querySelectorAll('span');
+        const grp = el('div', 'grid grid-cols-2 gap-2 mb-1');
+        const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Name ' + (i+1)));
+        const in1 = document.createElement('input'); in1.type='text'; in1.value = spans[0].textContent.trim();
+        in1.addEventListener('input', function(){ spans[0].textContent = in1.value; markDirty(); });
+        w1.appendChild(in1);
+        const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Title ' + (i+1)));
+        const in2 = document.createElement('input'); in2.type='text'; in2.value = spans[1].textContent.trim();
+        in2.addEventListener('input', function(){ spans[1].textContent = in2.value; markDirty(); });
+        w2.appendChild(in2);
+        grp.appendChild(w1); grp.appendChild(w2);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline mb-2 col-span-2', 'Remove this person');
+        del.type = 'button';
+        del.addEventListener('click', function(){ row.remove(); renderTeamMembers(); markDirty(); });
+        teamWrap.appendChild(grp); teamWrap.appendChild(del);
+      });
+    }
+    renderTeamMembers();
+    if (teamContainer) addButton(box, 'Add team member', function(){
+      const rows = teamContainer.querySelectorAll(':scope > div');
+      const clone = rows[rows.length - 1].cloneNode(true);
+      const spans = clone.querySelectorAll('span');
+      spans[0].textContent = 'New Person'; spans[1].textContent = 'Role';
+      teamContainer.appendChild(clone);
+      renderTeamMembers(); markDirty();
     });
 
+    // ---- Equipped for site ----
     box = section('Equipped for site');
-    doc.querySelectorAll('#team .grid.grid-cols-3').forEach(function(row, i){
-      const spans = row.querySelectorAll('span');
-      const grp = el('div', 'grid grid-cols-2 gap-2 mb-1');
-      const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Item ' + (i+1)));
-      const in1 = document.createElement('input'); in1.type='text'; in1.value = spans[0].textContent.trim();
-      in1.addEventListener('input', function(){ spans[0].textContent = in1.value; markDirty(); });
-      w1.appendChild(in1);
-      const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Spec ' + (i+1)));
-      const in2 = document.createElement('input'); in2.type='text'; in2.value = spans[1].textContent.trim();
-      in2.addEventListener('input', function(){ spans[1].textContent = in2.value; markDirty(); });
-      w2.appendChild(in2);
-      grp.appendChild(w1); grp.appendChild(w2);
-      box.appendChild(grp);
+    const equipWrap = el('div'); box.appendChild(equipWrap);
+    const equipRows0 = doc.querySelectorAll('#team .grid.grid-cols-3');
+    const equipContainer = equipRows0.length ? equipRows0[0].parentElement : null;
+    function renderEquipment() {
+      equipWrap.innerHTML = '';
+      doc.querySelectorAll('#team .grid.grid-cols-3').forEach(function(row, i){
+        const spans = row.querySelectorAll('span');
+        const grp = el('div', 'grid grid-cols-2 gap-2 mb-1');
+        const w1 = el('div', 'field'); w1.appendChild(el('label','field-label','Item ' + (i+1)));
+        const in1 = document.createElement('input'); in1.type='text'; in1.value = spans[0].textContent.trim();
+        in1.addEventListener('input', function(){ spans[0].textContent = in1.value; markDirty(); });
+        w1.appendChild(in1);
+        const w2 = el('div', 'field'); w2.appendChild(el('label','field-label','Spec ' + (i+1)));
+        const in2 = document.createElement('input'); in2.type='text'; in2.value = spans[1].textContent.trim();
+        in2.addEventListener('input', function(){ spans[1].textContent = in2.value; markDirty(); });
+        w2.appendChild(in2);
+        grp.appendChild(w1); grp.appendChild(w2);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline mb-2 col-span-2', 'Remove this item');
+        del.type = 'button';
+        del.addEventListener('click', function(){ row.remove(); renderEquipment(); markDirty(); });
+        equipWrap.appendChild(grp); equipWrap.appendChild(del);
+      });
+    }
+    renderEquipment();
+    if (equipContainer) addButton(box, 'Add equipment item', function(){
+      const rows = doc.querySelectorAll('#team .grid.grid-cols-3');
+      const clone = rows[rows.length - 1].cloneNode(true);
+      const spans = clone.querySelectorAll('span');
+      spans[0].textContent = 'New item'; spans[1].textContent = 'Spec';
+      equipContainer.appendChild(clone);
+      renderEquipment(); markDirty();
     });
 
+    // ---- Contact ----
     box = section('Contact');
     const contactH2 = doc.querySelector('#contact h2');
     if (contactH2) textField(box, 'Heading', contactH2, { multiline: true, rows: 2 });
@@ -591,16 +893,39 @@
       if (!labelDiv || !p) return;
       const label = labelDiv.textContent.trim();
       if (label === 'PHONE') {
-        p.querySelectorAll('a').forEach(function(a, i){
-          const w = el('div', 'field'); w.appendChild(el('label', 'field-label', 'Phone ' + (i+1)));
-          const input = document.createElement('input'); input.type = 'text'; input.value = a.textContent.trim();
-          input.addEventListener('input', function(){
-            a.textContent = input.value;
-            const digits = input.value.replace(/[^\d+]/g, '');
-            a.setAttribute('href', 'tel:' + digits);
-            markDirty();
+        const phoneWrap = el('div'); box.appendChild(phoneWrap);
+        function renderPhones() {
+          phoneWrap.innerHTML = '';
+          p.querySelectorAll('a').forEach(function(a, i){
+            const row = el('div', 'field flex gap-2 items-end');
+            const inner = el('div', 'flex-1');
+            inner.appendChild(el('label', 'field-label', 'Phone ' + (i+1)));
+            const input = document.createElement('input'); input.type = 'text'; input.value = a.textContent.trim();
+            input.addEventListener('input', function(){
+              a.textContent = input.value;
+              const digits = input.value.replace(/[^\d+]/g, '');
+              a.setAttribute('href', 'tel:' + digits);
+              markDirty();
+            });
+            inner.appendChild(input);
+            const del = el('button', 'text-[10px] text-[var(--red)] hover:underline pb-2', 'Remove');
+            del.type = 'button';
+            del.addEventListener('click', function(){ if (a.nextSibling && a.nextSibling.tagName === 'BR') a.nextSibling.remove(); a.remove(); renderPhones(); markDirty(); });
+            row.appendChild(inner); row.appendChild(del);
+            phoneWrap.appendChild(row);
           });
-          w.appendChild(input); box.appendChild(w);
+        }
+        renderPhones();
+        addButton(box, 'Add phone number', function(){
+          const anchors = p.querySelectorAll('a');
+          const lastA = anchors[anchors.length - 1];
+          const br = doc.createElement('br');
+          const newA = lastA.cloneNode(true);
+          newA.textContent = '+234 000 000 0000';
+          newA.setAttribute('href', 'tel:+2340000000000');
+          p.appendChild(br);
+          p.appendChild(newA);
+          renderPhones(); markDirty();
         });
       } else if (label === 'EMAIL') {
         const a = p.querySelector('a');
@@ -650,27 +975,80 @@
     if (heroImg) { heroImg.setAttribute('data-repo-path', repoPathFromRelative(heroImg.getAttribute('src'), 'projects/')); imageField(box, 'Hero photo', heroImg); }
 
     box = section('Scope of work');
-    doc.querySelectorAll('.grid.md\\:grid-cols-2.gap-14 ul.space-y-6 li p').forEach(function(p, i){
-      textField(box, 'Line ' + (i+1), p, { multiline: true, rows: 2 });
+    const scopeWrap = el('div'); box.appendChild(scopeWrap);
+    const scopeList = doc.querySelector('.grid.md\\:grid-cols-2.gap-14 ul.space-y-6');
+    function renderScope() {
+      scopeWrap.innerHTML = '';
+      doc.querySelectorAll('.grid.md\\:grid-cols-2.gap-14 ul.space-y-6 li').forEach(function(li, i){
+        const p = li.querySelector('p');
+        if (!p) return;
+        const row = el('div', 'field');
+        row.appendChild(el('label', 'field-label', 'Line ' + (i+1)));
+        const input = document.createElement('textarea'); input.rows = 2; input.value = p.textContent.trim();
+        input.addEventListener('input', function(){ p.textContent = input.value; markDirty(); });
+        row.appendChild(input);
+        const del = el('button', 'text-[10px] text-[var(--red)] hover:underline mb-2', 'Remove this line');
+        del.type = 'button';
+        del.addEventListener('click', function(){ li.remove(); renderScope(); markDirty(); });
+        row.appendChild(del);
+        scopeWrap.appendChild(row);
+      });
+    }
+    renderScope();
+    if (scopeList) addButton(box, 'Add scope line', function(){
+      const items = doc.querySelectorAll('.grid.md\\:grid-cols-2.gap-14 ul.space-y-6 li');
+      const clone = items[items.length - 1].cloneNode(true);
+      clone.querySelector('p').textContent = 'New scope line.';
+      scopeList.appendChild(clone);
+      renderScope(); markDirty();
     });
 
     box = section('Project details');
-    doc.querySelectorAll('.grid.sm\\:grid-cols-2.gap-8 > div').forEach(function(blockEl){
-      const divs = blockEl.querySelectorAll('div');
-      if (divs.length < 2) return;
-      const label = divs[0].textContent.trim();
-      const valueNode = divs[1];
-      if (label === 'DOCUMENTATION') {
-        const w = el('div', 'field');
-        w.appendChild(el('label', 'field-label', 'DOCUMENTATION (auto — counts photos below)'));
-        const ro = el('div', 'text-[13px] text-[var(--steel-300)] italic', valueNode.textContent.trim());
-        ro.id = 'docCountDisplay';
-        w.appendChild(ro);
-        box.appendChild(w);
-        valueNode.setAttribute('data-doc-count-node', '1');
-      } else {
-        textField(box, label, valueNode);
-      }
+    const detailsWrap = el('div'); box.appendChild(detailsWrap);
+    const detailsGrid = doc.querySelector('.grid.sm\\:grid-cols-2.gap-8');
+    function renderDetails() {
+      detailsWrap.innerHTML = '';
+      doc.querySelectorAll('.grid.sm\\:grid-cols-2.gap-8 > div').forEach(function(blockEl){
+        const divs = blockEl.querySelectorAll('div');
+        if (divs.length < 2) return;
+        const label = divs[0].textContent.trim();
+        const valueNode = divs[1];
+        if (label === 'DOCUMENTATION') {
+          const w = el('div', 'field');
+          w.appendChild(el('label', 'field-label', 'DOCUMENTATION (auto — counts photos below)'));
+          const ro = el('div', 'text-[13px] text-[var(--steel-300)] italic', valueNode.textContent.trim());
+          ro.id = 'docCountDisplay';
+          w.appendChild(ro);
+          detailsWrap.appendChild(w);
+          valueNode.setAttribute('data-doc-count-node', '1');
+        } else {
+          const row = el('div', 'field flex gap-2 items-end');
+          const inner = el('div', 'flex-1');
+          inner.appendChild(el('label', 'field-label', label));
+          const input = document.createElement('input'); input.type = 'text'; input.value = valueNode.textContent.trim();
+          input.addEventListener('input', function(){ valueNode.textContent = input.value; markDirty(); });
+          inner.appendChild(input);
+          const del = el('button', 'text-[10px] text-[var(--red)] hover:underline pb-2', 'Remove');
+          del.type = 'button';
+          del.addEventListener('click', function(){ blockEl.remove(); renderDetails(); markDirty(); });
+          row.appendChild(inner); row.appendChild(del);
+          detailsWrap.appendChild(row);
+        }
+      });
+    }
+    renderDetails();
+    if (detailsGrid) addButton(box, 'Add detail field', function(){
+      const label = prompt('Field label (e.g. SUB-CONTRACTOR):');
+      if (!label) return;
+      const blocks = doc.querySelectorAll('.grid.sm\\:grid-cols-2.gap-8 > div');
+      const template = blocks[0];
+      const clone = template.cloneNode(true);
+      const divs = clone.querySelectorAll('div');
+      divs[0].textContent = label.toUpperCase();
+      divs[1].textContent = 'Value here';
+      divs[1].removeAttribute('data-doc-count-node');
+      detailsGrid.appendChild(clone);
+      renderDetails(); markDirty();
     });
 
     box = section('Gallery');
@@ -760,15 +1138,45 @@
       "The form fields and submit wiring aren't editable here to avoid breaking the Formspree connection — tell me directly if those need to change."));
   }
 
+  // ---------- LEGAL PAGE FORM (Contact Developer / Terms / Cookie Policy) ----------
+  function renderLegalForm(doc) {
+    let box = section('Hero');
+    const h1 = doc.querySelector('h1');
+    if (h1) textField(box, 'Title', h1, { multiline: true, rows: 2 });
+    const heroP = h1 ? h1.nextElementSibling : null;
+    if (heroP && heroP.tagName === 'P') textField(box, 'Subtext', heroP, { multiline: true, rows: 2 });
+
+    box = section('Body sections');
+    doc.querySelectorAll('.bg-\\[var\\(--paper\\)\\] h2').forEach(function(h2, i){
+      const grp = el('div', 'mb-4 pb-4 border-b border-white/5');
+      grp.appendChild(el('div', 'text-[11px] text-[var(--gold)] mb-2', 'Section ' + (i+1)));
+      textField(grp, 'Heading', h2);
+      let sib = h2.nextElementSibling;
+      let pIndex = 1;
+      while (sib && sib.tagName === 'P') {
+        textField(grp, 'Paragraph ' + pIndex, sib, { multiline: true, rows: 3 });
+        pIndex++;
+        sib = sib.nextElementSibling;
+      }
+      box.appendChild(grp);
+    });
+  }
+
   // ---------- PUBLISH ----------
   document.getElementById('publishBtn').addEventListener('click', openPublishModal);
 
-  function openPublishModal() {
-    if (!currentPage || !previewDoc) return;
+  let pendingPublishAction = null;
+
+  function showPublishConfirm(action) {
+    pendingPublishAction = action;
     document.getElementById('publishPw').value = '';
     document.getElementById('publishPwErr').classList.add('hidden');
     document.getElementById('publishModal').classList.remove('hidden');
     document.getElementById('publishPw').focus();
+  }
+  function openPublishModal() {
+    if (!currentPage || !previewDoc) return;
+    showPublishConfirm(publish);
   }
   function closePublishModal() {
     document.getElementById('publishModal').classList.add('hidden');
@@ -786,7 +1194,7 @@
       return;
     }
     closePublishModal();
-    publish();
+    if (typeof pendingPublishAction === 'function') pendingPublishAction();
   });
 
   function dirOfPage(path) { return dirOf(path); }
@@ -852,6 +1260,204 @@
       btn.textContent = originalLabel;
     }
   }
+
+  // ---------- NEW PROJECT: templates ----------
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function slugify(s) {
+    return String(s || '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  function buildProjectPageHtml(f) {
+    return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+'<title>' + escapeHtml(f.title) + ' | D-Pikano Global Resources Ltd</title>\n' +
+'<meta name="description" content="' + escapeHtml(f.blurb) + '">\n' +
+'<link rel="canonical" href="https://d-pikano.com/projects/' + f.slug + '.html">\n' +
+'<meta property="og:type" content="website">\n' +
+'<meta property="og:title" content="' + escapeHtml(f.title) + ' | D-Pikano Global Resources Ltd">\n' +
+'<meta property="og:description" content="' + escapeHtml(f.blurb) + '">\n' +
+'<meta property="og:url" content="https://d-pikano.com/projects/' + f.slug + '.html">\n' +
+'<meta property="og:image" content="https://d-pikano.com/assets/projects/' + f.slug + '/01.jpg">\n' +
+'<meta property="og:site_name" content="D-Pikano Global Resources Ltd">\n' +
+'<meta name="twitter:card" content="summary_large_image">\n' +
+'<meta name="twitter:title" content="' + escapeHtml(f.title) + ' | D-Pikano Global Resources Ltd">\n' +
+'<meta name="twitter:description" content="' + escapeHtml(f.blurb) + '">\n' +
+'<meta name="twitter:image" content="https://d-pikano.com/assets/projects/' + f.slug + '/01.jpg">\n\n' +
+'<link rel="icon" type="image/svg+xml" href="../assets/logo.svg">\n' +
+'<link rel="preconnect" href="https://fonts.googleapis.com">\n' +
+'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
+'<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">\n' +
+'<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>\n' +
+'<link rel="stylesheet" href="../css/style.css">\n</head>\n<body class="antialiased" style="background:#0A1A2B">\n\n' +
+'<header class="fixed top-0 left-0 right-0 z-50 bg-[var(--navy-950)]/95 backdrop-blur border-b border-white/10">\n' +
+'  <div class="max-w-7xl mx-auto px-6 md:px-10 h-[76px] flex items-center justify-between">\n' +
+'    <a href="../index.html" class="flex items-center gap-3">\n' +
+'      <img src="../assets/logo.svg" alt="D-Pikano Global Resources logo" class="h-10 w-auto">\n' +
+'      <span class="font-display text-white font-semibold text-[15px] leading-tight hidden sm:block">\n' +
+'        D-PIKANO GLOBAL<br>\n' +
+'        <span class="font-mono text-[10px] tracking-[.16em] text-[var(--steel-300)] font-normal">RESOURCES LTD</span>\n' +
+'      </span>\n    </a>\n' +
+'    <a href="../index.html#projects" class="btn-ghost !py-0 !border-0 !text-[13px]">\n' +
+'      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13 8H3M7 4L3 8l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>\n' +
+'      All projects\n    </a>\n  </div>\n</header>\n\n' +
+'<section class="blueprint-bg pt-[76px] relative">\n' +
+'  <div class="max-w-7xl mx-auto px-6 md:px-10 py-14 md:py-20 relative z-10">\n' +
+'    <span class="chip-tag mb-5 block">' + escapeHtml(f.categoryTag) + '</span>\n' +
+'    <h1 class="font-display text-3xl md:text-5xl font-semibold tracking-tightest text-white leading-[1.1] max-w-3xl mb-6">' + escapeHtml(f.title) + '</h1>\n' +
+'    <p class="text-[var(--steel-300)] text-base md:text-lg leading-relaxed max-w-2xl">' + escapeHtml(f.blurb) + '</p>\n  </div>\n\n' +
+'  <div class="max-w-7xl mx-auto px-6 md:px-10 pb-14 relative z-10">\n' +
+'    <div class="rounded-sm overflow-hidden aspect-[16/9]">\n' +
+'      <img src="../assets/projects/' + f.slug + '/01.jpg" alt="' + escapeHtml(f.title) + ' hero photo" class="w-full h-full object-cover">\n' +
+'    </div>\n  </div>\n</section>\n\n' +
+'<section class="bg-[var(--paper)] py-16 md:py-20">\n' +
+'  <div class="max-w-7xl mx-auto px-6 md:px-10 grid md:grid-cols-2 gap-14 mb-16">\n' +
+'    <div>\n      <span class="chip-tag mb-5 block">Scope of Work</span>\n      <ul class="space-y-6">\n' +
+'        <li class="flex gap-4"><span class="font-mono text-[var(--red)] text-sm pt-1">&#8212;</span><p class="text-[var(--ink)]/75 text-[15px] leading-relaxed">' + escapeHtml(f.scope1) + '</p></li>\n' +
+'      </ul>\n    </div>\n' +
+'    <div class="grid sm:grid-cols-2 gap-8">\n' +
+'      <div>\n        <div class="text-[var(--steel-300)] text-[11px] tracking-wide mb-1 font-mono">LOCATION</div>\n        <div class="text-[var(--navy-950)] text-[15px]">' + escapeHtml(f.location) + '</div>\n      </div>\n' +
+'      <div>\n        <div class="text-[var(--steel-300)] text-[11px] tracking-wide mb-1 font-mono">CLIENT</div>\n        <div class="text-[var(--navy-950)] text-[15px]">' + escapeHtml(f.client) + '</div>\n      </div>\n' +
+'      <div>\n        <div class="text-[var(--steel-300)] text-[11px] tracking-wide mb-1 font-mono">MAIN CONTRACTOR</div>\n        <div class="text-[var(--navy-950)] text-[15px]">' + escapeHtml(f.contractor) + '</div>\n      </div>\n' +
+'      <div>\n        <div class="text-[var(--steel-300)] text-[11px] tracking-wide mb-1 font-mono">DOCUMENTATION</div>\n        <div class="text-[var(--navy-950)] text-[15px]">1 site photos</div>\n      </div>\n    </div>\n  </div>\n</section>\n\n' +
+'<section class="bg-[var(--paper)] pb-20 md:pb-28">\n  <div class="max-w-7xl mx-auto px-6 md:px-10">\n' +
+'    <span class="chip-tag mb-5 block">Site Documentation &middot; 1 Photos</span>\n' +
+'    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">\n' +
+'      <a href="../assets/projects/' + f.slug + '/01.jpg" target="_blank" class="block overflow-hidden rounded-sm aspect-[4/3] proj-card">\n' +
+'        <img src="../assets/projects/' + f.slug + '/01.jpg" alt="' + f.slug + ' site photo 1" class="w-full h-full object-cover" loading="lazy">\n' +
+'      </a>\n    </div>\n  </div>\n</section>\n\n' +
+'<footer class="bg-[var(--navy-950)] border-t border-white/10 py-8 relative z-10">\n' +
+'  <div class="max-w-7xl mx-auto px-6 md:px-10 flex flex-col sm:flex-row items-center justify-between gap-4">\n' +
+'    <div class="flex items-center gap-3">\n' +
+'      <img src="../assets/logo.svg" alt="D-Pikano Global Resources logo" class="h-8 w-auto">\n' +
+'      <span class="font-mono text-[11px] text-[var(--steel-300)]">D-Pikano Global Resources Ltd, RC 1271971</span>\n    </div>\n' +
+'    <div class="flex items-center gap-3 font-mono text-[11px] text-[var(--steel-300)]">\n' +
+'      <a href="#" data-social="linkedin" class="hover:text-white transition-colors">LinkedIn</a>\n' +
+'      <span class="text-white/20">&middot;</span>\n' +
+'      <a href="#" data-social="facebook" class="hover:text-white transition-colors">Facebook</a>\n' +
+'      <span class="text-white/20">&middot;</span>\n' +
+'      <a href="../contact-developer.html" class="text-[var(--red)] hover:text-white transition-colors font-medium">Contact Developer</a>\n' +
+'      <span class="text-white/20">&middot;</span>\n' +
+'      <a href="../terms-of-service.html" class="hover:text-white transition-colors">Terms of Service</a>\n' +
+'      <span class="text-white/20">&middot;</span>\n' +
+'      <a href="../cookie-policy.html" class="hover:text-white transition-colors">Cookie Policy</a>\n    </div>\n' +
+'    <a href="../request-quote.html" class="btn-primary !py-2.5 !px-5 !text-[13px]"><span>Request A Quote</span></a>\n  </div>\n</footer>\n</body>\n</html>\n';
+  }
+
+  function buildHomepageCardHtml(f) {
+    return '<a href="projects/' + f.slug + '.html" class="proj-card group rounded-sm block aspect-[4/3] relative">' +
+      '<img src="assets/projects/' + f.slug + '/01.jpg" alt="' + escapeHtml(f.title) + '" class="w-full h-full object-cover">' +
+      '<div class="proj-overlay absolute inset-0"></div>' +
+      '<div class="absolute bottom-0 left-0 right-0 p-6">' +
+      '<span class="chip-tag !text-[var(--steel-300)] mb-1 block">' + escapeHtml(f.categoryTag) + '</span>' +
+      '<h3 class="font-display text-white text-xl font-semibold">' + escapeHtml(f.title) + '</h3>' +
+      '<p class="text-[var(--steel-300)] text-sm mt-1">' + escapeHtml(f.blurb) + '</p>' +
+      '</div></a>';
+  }
+
+  // ---------- NEW PROJECT: modal wiring ----------
+  let npSlugTouched = false;
+  function openNewProjectModal() {
+    document.getElementById('npTitle').value = '';
+    document.getElementById('npSlug').value = '';
+    document.getElementById('npCategoryTag').value = '';
+    document.getElementById('npLocation').value = '';
+    document.getElementById('npClient').value = '';
+    document.getElementById('npContractor').value = 'D-Pikano Global Resources Ltd';
+    document.getElementById('npBlurb').value = '';
+    document.getElementById('npScope1').value = '';
+    document.getElementById('npImage').value = '';
+    document.getElementById('npErr').classList.add('hidden');
+    npSlugTouched = false;
+    document.getElementById('newProjectModal').classList.remove('hidden');
+  }
+  document.getElementById('npCancelBtn').addEventListener('click', function(){
+    document.getElementById('newProjectModal').classList.add('hidden');
+  });
+  document.getElementById('npTitle').addEventListener('input', function(){
+    if (!npSlugTouched) document.getElementById('npSlug').value = slugify(document.getElementById('npTitle').value);
+  });
+  document.getElementById('npSlug').addEventListener('input', function(){ npSlugTouched = true; });
+
+  document.getElementById('npCreateBtn').addEventListener('click', async function(){
+    const btn = document.getElementById('npCreateBtn');
+    const errEl = document.getElementById('npErr');
+    errEl.classList.add('hidden');
+
+    const f = {
+      title: document.getElementById('npTitle').value.trim(),
+      slug: slugify(document.getElementById('npSlug').value),
+      categoryTag: document.getElementById('npCategoryTag').value.trim(),
+      location: document.getElementById('npLocation').value.trim(),
+      client: document.getElementById('npClient').value.trim(),
+      contractor: document.getElementById('npContractor').value.trim(),
+      blurb: document.getElementById('npBlurb').value.trim(),
+      scope1: document.getElementById('npScope1').value.trim()
+    };
+    const file = document.getElementById('npImage').files[0];
+
+    if (!f.title || !f.slug || !f.blurb || !file) {
+      errEl.textContent = 'Title, slug, summary, and a photo are all required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    const allPaths = PAGES.concat(DYNAMIC_PAGES).map(function(p){ return p.slug; });
+    if (allPaths.indexOf(f.slug) !== -1) {
+      errEl.textContent = 'That slug is already used by another project — pick a different one.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>';
+
+    try {
+      // 1. upload the hero/first gallery image
+      const base64 = await fileToBase64(file);
+      const imgPath = 'assets/projects/' + f.slug + '/01.jpg';
+      await ghPutBinaryBase64(imgPath, GH_TOKEN, base64, null, "Add first photo for new project " + f.slug);
+
+      // 2. create the project page
+      const pageHtml = buildProjectPageHtml(f);
+      const pagePath = 'projects/' + f.slug + '.html';
+      await ghPutText(pagePath, GH_TOKEN, pageHtml, null, "Create new project page: " + f.title);
+
+      // 3. add a homepage card
+      const homeFile = await ghGetFile('index.html', GH_TOKEN);
+      const parser = new DOMParser();
+      const homeDoc = parser.parseFromString(homeFile.content, 'text/html');
+      const cardsGrid = homeDoc.querySelector('#projects .grid.sm\\:grid-cols-2.lg\\:grid-cols-3.gap-6');
+      const wrapper = homeDoc.createElement('div');
+      wrapper.innerHTML = buildHomepageCardHtml(f);
+      cardsGrid.appendChild(wrapper.firstElementChild);
+      const finalHomeHtml = "<!DOCTYPE html>\n" + homeDoc.documentElement.outerHTML;
+      await ghPutText('index.html', GH_TOKEN, finalHomeHtml, homeFile.sha, "Add homepage card for new project: " + f.title);
+
+      // 4. add to sitemap.xml (best-effort — skip silently if it doesn't exist)
+      try {
+        const sm = await ghGetFile('sitemap.xml', GH_TOKEN);
+        const entry = '  <url>\n    <loc>https://d-pikano.com/projects/' + f.slug + '.html</loc>\n    <changefreq>yearly</changefreq>\n    <priority>0.6</priority>\n  </url>\n</urlset>';
+        const newSitemap = sm.content.replace('</urlset>', entry);
+        await ghPutText('sitemap.xml', GH_TOKEN, newSitemap, sm.sha, "Add new project to sitemap: " + f.title);
+      } catch (e) { /* sitemap not present — skip */ }
+
+      // 5. register in the dashboard's page manifest so it shows in the sidebar
+      await saveDynamicPages({ path: pagePath, label: f.title, type: 'project', slug: f.slug });
+
+      document.getElementById('newProjectModal').classList.add('hidden');
+      toast("Created " + f.title + ". Vercel will redeploy shortly.", "ok");
+      buildPageList();
+    } catch (e) {
+      errEl.textContent = 'Something failed partway: ' + e.message + '. Check the GitHub repo before retrying, to avoid duplicate files.';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
 
 })();
 </script>
