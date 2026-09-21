@@ -1,0 +1,5 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="60" height="60" rx="10" fill="#0F2942"/>
+  <rect x="2" y="2" width="60" height="60" rx="10" fill="none" stroke="#C1272D" stroke-width="3"/>
+  <text x="32" y="41" font-family="Space Grotesk, Arial, sans-serif" font-weight="700" font-size="22" fill="#FFFFFF" text-anchor="middle">DPG</text>
+</svg>
